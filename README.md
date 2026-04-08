@@ -39,10 +39,15 @@ dans l'image `rfm-etl:latest` (`python -m etl.ingest` / `etl.transform` / `etl.r
 
 ```bash
 cp .env.example .env
-# Adapter AIRFLOW_UID avec : id -u
 # Générer une Fernet key :
 python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Récupérer le chemin absolu du dossier data (à mettre dans HOST_DATA_PATH) :
+cd data && pwd && cd ..
 ```
+
+⚠️ **Important** : `HOST_DATA_PATH` doit pointer vers ton dossier `data/` local
+(chemin absolu). C'est lui qui permet à `DockerOperator` de monter le dataset
+dans le container ETL.
 
 ### 3. Build & run
 
@@ -84,8 +89,8 @@ docker compose down -v      # stop + efface le volume Postgres (repart à zéro)
 
 ## 📝 Notes
 
-- Le chemin du volume dataset est **hardcodé** dans [dags/rfm_dag.py](dags/rfm_dag.py)
-  (`DATA_MOUNT.source`). À adapter selon la machine où tourne le projet.
+- Le chemin du volume dataset est lu depuis `HOST_DATA_PATH` dans `.env`
+  (chacun adapte selon sa machine).
 - Le réseau Docker utilisé par `DockerOperator` est nommé `rfm-pipeline_default`
   (généré par compose à partir du nom du dossier).
 

@@ -5,6 +5,7 @@ Chaque tâche lance le container `rfm-etl:latest` via DockerOperator avec une
 commande différente. Les containers lancés par Airflow rejoignent le réseau
 Docker de compose pour pouvoir atteindre le service `postgres` par son nom.
 """
+import os
 from datetime import datetime
 
 from airflow import DAG
@@ -31,8 +32,9 @@ ETL_ENV = {
 # Volume du dataset monté en read-only dans le container ETL.
 # Le chemin SOURCE est celui de l'HÔTE (pas du container Airflow) car c'est
 # le démon Docker de l'hôte qui crée le container ETL via le socket monté.
+# Lu depuis la variable HOST_DATA_PATH du fichier .env (à adapter par chacun).
 DATA_MOUNT = Mount(
-    source="/Users/dahanifernando/Simplon/rfm-pipeline/data",
+    source=os.environ["HOST_DATA_PATH"],
     target="/app/data",
     type="bind",
     read_only=True,
