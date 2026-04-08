@@ -53,8 +53,7 @@ dans le container ETL.
 
 ```bash
 # Build de l'image ETL (service en profile, ne démarre pas automatiquement)
-docker compose --profile build-only build etl
-
+qu
 # Démarrage des services principaux
 docker compose up -d
 ```
@@ -91,8 +90,9 @@ docker compose down -v      # stop + efface le volume Postgres (repart à zéro)
 
 - Le chemin du volume dataset est lu depuis `HOST_DATA_PATH` dans `.env`
   (chacun adapte selon sa machine).
-- Le réseau Docker utilisé par `DockerOperator` est nommé `rfm-pipeline_default`
-  (généré par compose à partir du nom du dossier).
+- Le réseau Docker utilisé par `DockerOperator` est lu depuis `COMPOSE_NETWORK`
+  dans `.env`. Son nom est généré par compose au format `<nom_du_dossier>_default`.
+  À vérifier avec `docker network ls` après un premier `docker compose up -d`.
 
 ## 🗂 Structure
 

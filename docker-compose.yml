@@ -26,6 +26,8 @@ x-airflow-common: &airflow-common
     RFM_DB_NAME: rfm
     # Chemin du dataset sur l'HÔTE (utilisé par DockerOperator pour le bind mount)
     HOST_DATA_PATH: ${HOST_DATA_PATH}
+    # Nom du réseau Docker compose (dépend du nom du dossier projet)
+    COMPOSE_NETWORK: ${COMPOSE_NETWORK}
     # Paquets Python ajoutés au container Airflow pour DockerOperator
     _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-docker==3.12.0"
   volumes:
