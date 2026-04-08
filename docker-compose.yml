@@ -1,0 +1,139 @@
+# ============================================================================
+# Pipeline RFM — Docker Compose
+# ----------------------------------------------------------------------------
+# 4 services :
+#   1. postgres    → stocke la metadata Airflow ET les données métier
+#                    (schémas bronze/silver/gold dans la DB `rfm`)
+#   2. airflow     → scheduler + webserver (LocalExecutor, tout-en-un)
+#   3. etl         → image Python custom contenant nos scripts ETL ;
+#                    lancée à la demande par Airflow via DockerOperator
+#   4. streamlit   → dashboard de visualisation de la table `gold.rfm_scores`
+# ============================================================================
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.2-python3.11
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow_meta
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    # Le DAG passe ces vars au container ETL pour qu'il se connecte à Postgres
+    RFM_DB_HOST: postgres
+    RFM_DB_PORT: 5432
+    RFM_DB_USER: ${POSTGRES_USER}
+    RFM_DB_PASSWORD: ${POSTGRES_PASSWORD}
+    RFM_DB_NAME: rfm
+    # Paquets Python ajoutés au container Airflow pour DockerOperator
+    _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-docker==3.12.0"
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    # Socket Docker monté pour que Airflow puisse lancer d'autres containers
+    - /var/run/docker.sock:/var/run/docker.sock
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  # --------------------------------------------------------------------------
+  # Postgres — metadata Airflow + schémas médaillon (bronze/silver/gold)
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:16
+    container_name: rfm_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Les .sql ici sont exécutés au PREMIER démarrage (création des schémas
+      # bronze/silver/gold + de la DB airflow_meta)
+      - ./sql:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"   # exposé pour debug (DBeaver, psql...)
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      interval: 5s
+      retries: 5
+
+  # --------------------------------------------------------------------------
+  # Airflow init — crée les tables de metadata et l'utilisateur admin
+  # (s'exécute une seule fois puis s'arrête)
+  # --------------------------------------------------------------------------
+  airflow-init:
+    <<: *airflow-common
+    container_name: rfm_airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate && \
+        airflow users create \
+          --username ${AIRFLOW_ADMIN_USER} \
+          --password ${AIRFLOW_ADMIN_PASSWORD} \
+          --firstname admin --lastname admin \
+          --role Admin --email admin@example.com || true
+    restart: "no"
+
+  # --------------------------------------------------------------------------
+  # Airflow — scheduler + webserver dans un seul container (standalone)
+  # Simple pour le brief. En prod on séparerait les deux.
+  # --------------------------------------------------------------------------
+  airflow:
+    <<: *airflow-common
+    container_name: rfm_airflow
+    command: standalone
+    ports:
+      - "8080:8080"   # UI Airflow : http://localhost:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # --------------------------------------------------------------------------
+  # ETL — image custom avec pandas/sqlalchemy + nos scripts
+  # Ne tourne PAS en permanence : Airflow la lance à la demande via
+  # DockerOperator, avec une commande différente par tâche (ingest/transform/rfm)
+  # --------------------------------------------------------------------------
+  etl:
+    build: ./etl
+    image: rfm-etl:latest
+    container_name: rfm_etl
+    environment:
+      RFM_DB_HOST: postgres
+      RFM_DB_PORT: 5432
+      RFM_DB_USER: ${POSTGRES_USER}
+      RFM_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      RFM_DB_NAME: rfm
+    volumes:
+      - ./data:/app/data:ro
+    networks:
+      - default
+    # On le met en "profile" pour qu'il ne démarre pas automatiquement
+    # avec `docker compose up` — seule l'image sera buildée.
+    profiles: ["build-only"]
+
+  # --------------------------------------------------------------------------
+  # Streamlit — dashboard sur la table gold.rfm_scores
+  # --------------------------------------------------------------------------
+  streamlit:
+    build: ./streamlit_app
+    container_name: rfm_streamlit
+    environment:
+      RFM_DB_HOST: postgres
+      RFM_DB_PORT: 5432
+      RFM_DB_USER: ${POSTGRES_USER}
+      RFM_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      RFM_DB_NAME: rfm
+    ports:
+      - "8501:8501"   # UI Streamlit : http://localhost:8501
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
