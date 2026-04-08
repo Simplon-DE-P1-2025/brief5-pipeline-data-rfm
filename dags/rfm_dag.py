@@ -13,9 +13,10 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from docker.types import Mount
 
 # Nom du réseau Docker créé automatiquement par docker compose.
-# Format : <nom_du_dossier>_default → ici "rfm-pipeline_default".
-# À adapter si le dossier du projet a un autre nom.
-COMPOSE_NETWORK = "rfm-pipeline_default"
+# Format : <nom_du_dossier>_default. Lu depuis .env car le nom dépend du
+# dossier de chaque dev (ex: rfm-pipeline_default, brief5-pipeline-data-rfm_default).
+# Vérifier avec : `docker network ls`
+COMPOSE_NETWORK = os.environ["COMPOSE_NETWORK"]
 
 ETL_IMAGE = "rfm-etl:latest"
 
