@@ -60,12 +60,13 @@ with DAG(
         task_id="ingest_bronze",
         image=ETL_IMAGE,
         command="python -m etl.ingest",
+        force_pull=False,
         auto_remove="success",
         network_mode=COMPOSE_NETWORK,
         mounts=[DATA_MOUNT],
         environment=ETL_ENV,
         mount_tmp_dir=False,
-        docker_url="unix://var/run/docker.sock",
+        docker_url="unix:///var/run/docker.sock",
     )
 
     transform = DockerOperator(
@@ -76,7 +77,7 @@ with DAG(
         network_mode=COMPOSE_NETWORK,
         environment=ETL_ENV,
         mount_tmp_dir=False,
-        docker_url="unix://var/run/docker.sock",
+        docker_url="unix:///var/run/docker.sock",
     )
 
     score = DockerOperator(
@@ -87,7 +88,7 @@ with DAG(
         network_mode=COMPOSE_NETWORK,
         environment=ETL_ENV,
         mount_tmp_dir=False,
-        docker_url="unix://var/run/docker.sock",
+        docker_url="unix:///var/run/docker.sock",
     )
 
     ingest >> transform >> score
